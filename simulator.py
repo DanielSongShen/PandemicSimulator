@@ -43,6 +43,7 @@ class SEIRSTransmissionModel:
         if status == RECOVERED:
             if random.random() < self.omega:
                 return SUSCEPTIBLE
+        return status
 
 
 class ErrorModel:
@@ -89,20 +90,31 @@ class ComplianceModel:
 
 class PandemicSimulation:
     def __init__(self,
+                 world=nx.Graph(),
                  transmission_model=SEIRSTransmissionModel(),
                  error_model=ErrorModel(),
                  happiness_model=HappinessModel(),
                  compliance_model=ComplianceModel(),
-                 birth_rate=0.0182,
-                 death_rate=0.009841,
+                 birth_rate=0.0182,  # From United Nations
+                 death_rate=0.009841,  # From United Nations
                  r_q=0.01,
                  r_m=0.15,
                  r_sd=0.3):
-        self.world = nx.Graph()
+        self.world = world
+        self.statuses = nx.get_node_attributes(self.world, "status")
         self.t = 0
         self.br = birth_rate
         self.dr = death_rate
-        self.stats = {"N": 0, SUSCEPTIBLE: 0, EXPOSED: 0, INFECTIOUS: 0, RECOVERED: 0, DECEASED: 0, "H": 0}
+        self.stats = {"N": len(world.nodes),
+                      SUSCEPTIBLE: 0,
+                      EXPOSED: 0,
+                      INFECTIOUS: 0,
+                      RECOVERED: 0,
+                      DECEASED: 0,
+                      "H": sum([world.nodes[_]["happiness"] for _ in world.nodes])
+                      }
+        for node in self.world.nodes:
+            self.stats[self.statuses[node]] += 1
         self.mandates = {"Q": False, "M": False, "SD": False, "CT": False}
         self.mandate_effects = {"Q": r_q, "M": r_m, "SD": r_sd}
         self.transmission_model = transmission_model
@@ -113,36 +125,56 @@ class PandemicSimulation:
     def apply_mandates(self, compliance, interactions):
         updated_interactions = interactions
         if self.mandates["Q"]:
-            if random.random < compliance:
+            if random.random() < compliance:
                 updated_interactions = [_*self.mandate_effects["Q"] for _ in updated_interactions]
         for i in range(len(updated_interactions)):
             if self.mandates["M"]:
-                if random.random < compliance:
+                if random.random() < compliance:
                     updated_interactions[i] = updated_interactions[i]*self.mandate_effects["M"]
             if self.mandates["SD"]:
-                if random.random < compliance:
+                if random.random() < compliance:
                     updated_interactions[i] = updated_interactions[i]*self.mandate_effects["SD"]
         return updated_interactions
 
     def step(self):
+        self.statuses = nx.get_node_attributes(self.world, "status")
         # TODO add birth and death rates
         for node in self.world.nodes:
+            node_dict = self.world.nodes[node]
             # First do behavior model
-            c = self.compliance_model(c=node["compliance"], h=node["happiness"])
-            interactions = self.apply_mandates(c, self.world.edges[node])
+            c = self.compliance_model(p=node_dict["compliance"], h=node_dict["happiness"])
+            # print(self.world.neighbors(node))
+            neighbors = self.world[node]
+            default_interactions = [self.world.get_edge_data(node, neighbor, default=0)['weight'] for neighbor in neighbors]
+            interactions = self.apply_mandates(c, default_interactions)
             # Transmit disease
-            status = node["status"]
+            status = self.statuses[node]
             self.stats[status] -= 1
-            node["status"] = self.transmission_model.step(status,
-                                                          interactions=interactions,
-                                                          neighbors=self.world[node])
-            self.stats[node["status"]] += 1
-            node["happiness"] = self.happiness_model(node["happiness"], self.mandates)
+            new_status = self.transmission_model.step(status,
+                                                      interactions=interactions,
+                                                      neighbors=[self.statuses[_] for _ in neighbors])
+            nx.set_node_attributes(self.world, {node: new_status}, 'status')
+            self.stats[new_status] += 1
+            self.stats["H"] -= node_dict["happiness"]
+            new_happiness = self.happiness_model(node_dict["happiness"], self.mandates)
+            print(new_happiness)
+            nx.set_node_attributes(self.world, {node: new_happiness}, 'happiness')
+            self.stats["H"] += new_happiness
         self.t += 1
+        print(self.stats)
+        assert self.stats["N"] == sum([val for key, val in self.stats.items() if key != "H" and key != "N"])
 
     def observe(self):
         result = {}
         for stat, val in self.stats.items():
-            result[stat] = val + self.error_model(self.t)
+            if stat != "N":
+                error = self.error_model(self.t)
+            else:
+                error = 0
+            result[stat] = val + error
         # TODO add contact tracing
         return result
+
+    def update_mandates(self, **kwargs):
+        for key, val in kwargs.items():
+            self.mandates[key] = val
