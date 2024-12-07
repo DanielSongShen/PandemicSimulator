@@ -143,7 +143,6 @@ class PandemicSimulation:
             node_dict = self.world.nodes[node]
             # First do behavior model
             c = self.compliance_model(p=node_dict["compliance"], h=node_dict["happiness"])
-            # print(self.world.neighbors(node))
             neighbors = self.world[node]
             default_interactions = [self.world.get_edge_data(node, neighbor, default=0)['weight'] for neighbor in neighbors]
             interactions = self.apply_mandates(c, default_interactions)
@@ -157,11 +156,9 @@ class PandemicSimulation:
             self.stats[new_status] += 1
             self.stats["H"] -= node_dict["happiness"]
             new_happiness = self.happiness_model(node_dict["happiness"], self.mandates)
-            print(new_happiness)
             nx.set_node_attributes(self.world, {node: new_happiness}, 'happiness')
             self.stats["H"] += new_happiness
         self.t += 1
-        print(self.stats)
         assert self.stats["N"] == sum([val for key, val in self.stats.items() if key != "H" and key != "N"])
 
     def observe(self):
@@ -175,6 +172,22 @@ class PandemicSimulation:
         # TODO add contact tracing
         return result
 
-    def update_mandates(self, **kwargs):
-        for key, val in kwargs.items():
+    def print_observations(self):
+        obs = self.observe()
+        for key, val in obs.items():
+            if key == 0:
+                print("SUSCEPTIBLE: %.2f" % val)
+            elif key == 1:
+                print("EXPOSED: %.2f" % val)
+            elif key == 2:
+                print("INFECTIOUS: %.2f" % val)
+            elif key == 3:
+                print("RECOVERED: %.2f" % val)
+            elif key == 4:
+                print("DECEASED: %.2f" % val)
+            else:
+                print(f"{key}: {val: .2f}")
+
+    def update_mandates(self, new_mandates):
+        for key, val in new_mandates.items():
             self.mandates[key] = val
