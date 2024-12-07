@@ -40,11 +40,10 @@ if __name__ == '__main__':
     iters = 1000  # Number of days to simulate
     density = 0.1  # Density of connections
     init_exposed = 0.05  # Percentage of total pop that was exposed
-    N = 100
+    N = 100  # Total population
     world = initialize_world(N=N, p_edge=density, exposed_pop=init_exposed)
-    #nx.draw(world)
-    #plt.show()
     world_sim = PandemicSimulation(world=world)
+    reward_fn = Reward()
     mandates_list = list(world_sim.mandates.keys())
     print(mandates_list)
     for day in range(iters):
@@ -56,9 +55,10 @@ if __name__ == '__main__':
         world_sim.print_observations()
         print("Stats")
         print(world_sim.stats)
+        print("Reward")
+        print(reward_fn(stats=world_sim.stats))
         # Get model action
         action = model(observation)
-        #print("action", action)
         # Parse action
         new_mandates = {}
         base2 = numberToBase(action, 2)
@@ -70,7 +70,10 @@ if __name__ == '__main__':
                 new_mandates[mandates_list[_]] = True
             else:
                 new_mandates[mandates_list[_]] = False
+        # Update mandates
         world_sim.update_mandates(new_mandates)
+        # Update world
+        world_sim.step()
         print()
 
     # sample_world = nx.Graph()

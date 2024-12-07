@@ -88,6 +88,22 @@ class ComplianceModel:
         return p + self.alpha*pow(h, self.k)*(1.-p)
 
 
+class Reward:
+    def __init__(self, alpha=0.5, beta=0.5, w0=1, w1=1000):
+        self.alpha = alpha
+        self.beta = beta
+        self.w0 = w0
+        self.w1 = w1
+
+    def __call__(self, *args, **kwargs):
+        s = kwargs['stats']
+        h = s['H']
+        n_e = s[EXPOSED]
+        n_i = s[INFECTIOUS]
+        n_d = s[DECEASED]
+        return self.alpha*h-self.beta*(self.w0*(n_i+n_e)+self.w1*n_d)
+
+
 class PandemicSimulation:
     def __init__(self,
                  world=nx.Graph(),
@@ -155,9 +171,13 @@ class PandemicSimulation:
             nx.set_node_attributes(self.world, {node: new_status}, 'status')
             self.stats[new_status] += 1
             self.stats["H"] -= node_dict["happiness"]
-            new_happiness = self.happiness_model(node_dict["happiness"], self.mandates)
+            if new_status != DECEASED:
+                new_happiness = self.happiness_model(node_dict["happiness"], self.mandates)
+            else:
+                new_happiness = 0
             nx.set_node_attributes(self.world, {node: new_happiness}, 'happiness')
             self.stats["H"] += new_happiness
+
         self.t += 1
         assert self.stats["N"] == sum([val for key, val in self.stats.items() if key != "H" and key != "N"])
 
